@@ -15,13 +15,17 @@ dependencies = [
     "s3tokenizer",
     "torch==2.7.0",
     "torchaudio==2.7.0",
-    "transformers==4.46.3",
+    "transformers>=4.52.4",
     "diffusers==0.29.0",
     "resemble-perth==1.0.1",
     "omegaconf==2.3.0",
     "conformer==0.3.2",
     "safetensors==0.5.3",
     "peft>=0.15.2",
+    "tensorboard>=2.19.0",
+    "datasets>=3.6.0",
+    "beam-client>=0.2.161",
+    "pykakasi>=2.3.0",
 ]
 
 [project.urls]

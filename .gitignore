@@ -47,6 +47,15 @@ checkpoints/
 # Ignore generated sample .wav files
 **/*.wav
 
-
-
+datasets/
+chatterbox_weights_jp/
+chatterbox_weights/
+final_finetuned/
+personal/
+chatterbox-project/
+wsl_venv/
+.cursorignore
+tokens.yaml
+call.md
+minimal_example.py
 
