@@ -4,7 +4,7 @@ from ..llama_configs import LLAMA_CONFIGS
 class T3Config:
     start_text_token = 255
     stop_text_token = 0
-    text_tokens_dict_size = 704
+    text_tokens_dict_size = 2000 # 704 original
     max_text_tokens = 2048
 
     start_speech_token = 6561

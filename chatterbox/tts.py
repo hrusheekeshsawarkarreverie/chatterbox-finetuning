@@ -124,6 +124,173 @@ class ChatterboxTTS:
         self.device = device
         self.conds = conds
         self.watermarker = perth.PerthImplicitWatermarker()
+        
+    def _redact_bracketed_audio(self, wav, text):
+        """
+        Post-processing approach similar to Tortoise TTS redaction.
+        Removes audio segments corresponding to bracketed text using wav2vec2 alignment.
+        """
+        if '[' not in text:
+            return wav
+            
+        try:
+            from transformers import Wav2Vec2ForCTC, Wav2Vec2CTCTokenizer
+            
+            # Initialize wav2vec2 models (same as Tortoise)
+            model = Wav2Vec2ForCTC.from_pretrained("jbetker/wav2vec2-large-robust-ft-libritts-voxpopuli").to(self.device)
+            tokenizer = Wav2Vec2CTCTokenizer.from_pretrained('jbetker/tacotron-symbols')
+            
+            # Parse bracketed sections
+            splitted = text.split('[')
+            fully_split = [splitted[0]]
+            for spl in splitted[1:]:
+                if ']' not in spl:
+                    print(f"Warning: Found '[' without matching ']' in text: {text}")
+                    return wav
+                fully_split.extend(spl.split(']'))
+            
+            # Identify non-redacted intervals (text we want to keep)
+            non_redacted_intervals = []
+            last_point = 0
+            for i in range(len(fully_split)):
+                if i % 2 == 0 and fully_split[i] != "":  # Keep even indices (non-bracketed)
+                    end_interval = max(0, last_point + len(fully_split[i]) - 1)
+                    non_redacted_intervals.append((last_point, end_interval))
+                last_point += len(fully_split[i])
+            
+            if not non_redacted_intervals:
+                print("Warning: No non-bracketed text found to keep")
+                return wav
+            
+            # Create alignment using wav2vec2
+            bare_text = ''.join(fully_split)  # Text without brackets
+            alignments = self._align_audio_to_text(wav, bare_text, model, tokenizer)
+            print(alignments)
+            # Extract and concatenate non-redacted audio segments
+            output_audio = []
+            for start_char, end_char in non_redacted_intervals:
+                if start_char < len(alignments) and end_char < len(alignments):
+                    start_sample = alignments[start_char]
+                    end_sample = alignments[end_char] if end_char < len(alignments) - 1 else wav.shape[-1]
+                    output_audio.append(wav[:, start_sample:end_sample])
+            
+            if output_audio:
+                redacted_wav = torch.cat(output_audio, dim=-1)
+                print(f"Redaction successful: {wav.shape[-1]} -> {redacted_wav.shape[-1]} samples")
+                return redacted_wav
+            else:
+                print("Warning: No audio segments to concatenate")
+                return wav
+                
+        except Exception as e:
+            print(f"Redaction failed: {e}, returning original audio")
+            return wav
+    
+    def _max_alignment(self, s1, s2, skip_character='~', record=None):
+        """
+        Tortoise's dynamic programming alignment algorithm.
+        Aligns s1 to s2 as best it can, using '~' for unmatched characters.
+        """
+        if record is None:
+            record = {}
+        assert skip_character not in s1, f"Found the skip character {skip_character} in the provided string, {s1}"
+        if len(s1) == 0:
+            return ''
+        if len(s2) == 0:
+            return skip_character * len(s1)
+        if s1 == s2:
+            return s1
+        if s1[0] == s2[0]:
+            return s1[0] + self._max_alignment(s1[1:], s2[1:], skip_character, record)
+
+        take_s1_key = (len(s1), len(s2) - 1)
+        if take_s1_key in record:
+            take_s1, take_s1_score = record[take_s1_key]
+        else:
+            take_s1 = self._max_alignment(s1, s2[1:], skip_character, record)
+            take_s1_score = len(take_s1.replace(skip_character, ''))
+            record[take_s1_key] = (take_s1, take_s1_score)
+
+        take_s2_key = (len(s1) - 1, len(s2))
+        if take_s2_key in record:
+            take_s2, take_s2_score = record[take_s2_key]
+        else:
+            take_s2 = self._max_alignment(s1[1:], s2, skip_character, record)
+            take_s2_score = len(take_s2.replace(skip_character, ''))
+            record[take_s2_key] = (take_s2, take_s2_score)
+
+        return take_s1 if take_s1_score > take_s2_score else skip_character + take_s2
+
+    def _align_audio_to_text(self, audio, expected_text, model, tokenizer):
+        """Full Tortoise-style wav2vec2 alignment implementation"""
+        orig_len = audio.shape[-1]
+        
+        with torch.no_grad():
+            # Resample to 16kHz for wav2vec2
+            import torchaudio
+            audio_16k = torchaudio.functional.resample(audio, self.sr, 16000)
+            
+            # Normalize audio
+            clip_norm = (audio_16k - audio_16k.mean()) / torch.sqrt(audio_16k.var() + 1e-7)
+            logits = model(clip_norm.to(self.device)).logits
+
+        logits = logits[0]
+        pred_string = tokenizer.decode(logits.argmax(-1).tolist())
+        
+        # Use Tortoise's max_alignment algorithm
+        fixed_expectation = self._max_alignment(expected_text.lower(), pred_string)
+        w2v_compression = orig_len // logits.shape[0]
+        expected_tokens = tokenizer.encode(fixed_expectation)
+        expected_chars = list(fixed_expectation)
+        
+        if len(expected_tokens) == 1:
+            return [0]  # Simple case
+        expected_tokens.pop(0)  # Remove first token
+        expected_chars.pop(0)
+
+        alignments = [0]
+        def pop_till_you_win():
+            if len(expected_tokens) == 0:
+                return None
+            popped = expected_tokens.pop(0)
+            popped_char = expected_chars.pop(0)
+            while popped_char == '~':
+                alignments.append(-1)
+                if len(expected_tokens) == 0:
+                    return None
+                popped = expected_tokens.pop(0)
+                popped_char = expected_chars.pop(0)
+            return popped
+
+        next_expected_token = pop_till_you_win()
+        for i, logit in enumerate(logits):
+            top = logit.argmax()
+            if next_expected_token == top:
+                alignments.append(i * w2v_compression)
+                if len(expected_tokens) > 0:
+                    next_expected_token = pop_till_you_win()
+                else:
+                    break
+
+        pop_till_you_win()
+        if not (len(expected_tokens) == 0 and len(alignments) == len(expected_text)):
+            print(f"Alignment warning: expected {len(expected_text)} alignments, got {len(alignments)}")
+            # Fall back to linear alignment
+            return [int(i * orig_len / len(expected_text)) for i in range(len(expected_text))]
+
+        # Fix up alignments - interpolate -1 values
+        alignments.append(orig_len)  # Temporary for algorithm
+        for i in range(len(alignments)):
+            if alignments[i] == -1:
+                for j in range(i+1, len(alignments)):
+                    if alignments[j] != -1:
+                        next_found_token = j
+                        break
+                for j in range(i, next_found_token):
+                    gap = alignments[next_found_token] - alignments[i-1]
+                    alignments[j] = (j-i+1) * gap // (next_found_token-i+1) + alignments[i-1]
+
+        return alignments[:-1]  # Remove temporary last element
 
     @classmethod
     def from_local(cls, ckpt_dir, device) -> 'ChatterboxTTS':
@@ -260,6 +427,7 @@ class ChatterboxTTS:
         exaggeration=0.5,
         cfg_weight=0.5,
         temperature=0.8,
+        redact=False,
     ):
         if audio_prompt_path:
             self.prepare_conditionals(audio_prompt_path, exaggeration=exaggeration)
@@ -277,7 +445,11 @@ class ChatterboxTTS:
 
         # Norm and tokenize text
         text = punc_norm(text)
-        text_tokens = self.tokenizer.text_to_tokens(text).to(self.device)
+        if '[' in text:
+            text_1 = text.replace('[', '').replace(']', '')
+        else:
+            text_1 = text
+        text_tokens = self.tokenizer.text_to_tokens(text_1).to(self.device)
 
         if cfg_weight > 0.0:
             text_tokens = torch.cat([text_tokens, text_tokens], dim=0)  # Need two seqs for CFG
@@ -288,15 +460,50 @@ class ChatterboxTTS:
         text_tokens = F.pad(text_tokens, (0, 1), value=eot)
 
         with torch.inference_mode():
-            speech_tokens = self.t3.inference(
+            result = self.t3.inference(
                 t3_cond=self.conds.t3,
                 text_tokens=text_tokens,
                 max_new_tokens=1000,  # TODO: use the value in config
                 temperature=temperature,
                 cfg_weight=cfg_weight,
             )
+            
+            # Handle both old format (tensor) and new format (dict)
+            if isinstance(result, dict):
+                speech_tokens = result['final_tokens']
+                first_gen_tokens = result.get('first_generation')
+                
+                # Save first generation audio if it exists
+                if first_gen_tokens is not None:
+                    try:
+                        # Extract only the conditional batch for first generation
+                        first_tokens = first_gen_tokens[0] if first_gen_tokens.dim() > 1 else first_gen_tokens
+                        first_tokens = drop_invalid_tokens(first_tokens)
+                        first_tokens = first_tokens.to(self.device)
+                        
+                        # Generate audio for first generation
+                        first_wav, _ = self.s3gen.inference(
+                            speech_tokens=first_tokens,
+                            ref_dict=self.conds.gen,
+                        )
+                        first_wav = first_wav.squeeze(0).detach().cpu().numpy()
+                        
+                        # Save to seq_debug.wav
+                        import torchaudio
+                        torchaudio.save("seq_debug.wav", torch.from_numpy(first_wav).unsqueeze(0), self.sr)
+                        print("DEBUG: Saved first generation audio to seq_debug.wav")
+                        
+                    except Exception as e:
+                        print(f"DEBUG: Could not save first generation audio: {e}")
+            else:
+                # Old format - just a tensor
+                speech_tokens = result
+            
+            # Note: speech_tokens contain full generation including BL/EL content
+            # Audio-level redaction will be applied after synthesis
+            
             # Extract only the conditional batch.
-            speech_tokens = speech_tokens[0]
+            speech_tokens = speech_tokens[0] if speech_tokens.dim() > 1 else speech_tokens
 
             # TODO: output becomes 1D
             speech_tokens = drop_invalid_tokens(speech_tokens)
@@ -307,5 +514,12 @@ class ChatterboxTTS:
                 ref_dict=self.conds.gen,
             )
             wav = wav.squeeze(0).detach().cpu().numpy()
-            watermarked_wav = self.watermarker.apply_watermark(wav, sample_rate=self.sr)
+            wav_tensor = torch.from_numpy(wav).unsqueeze(0)
+            
+            # Apply redaction if bracketed text is present
+            if redact:
+                wav_tensor = self._redact_bracketed_audio(wav_tensor, text)
+            
+            # Apply watermark
+            watermarked_wav = self.watermarker.apply_watermark(wav_tensor.squeeze(0).numpy(), sample_rate=self.sr)
         return torch.from_numpy(watermarked_wav).unsqueeze(0)

@@ -58,4 +58,5 @@ wsl_venv/
 tokens.yaml
 call.md
 minimal_example.py
-
+beam_documentation/
+CLAUDE.md

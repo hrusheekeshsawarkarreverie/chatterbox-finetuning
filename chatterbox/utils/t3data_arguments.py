@@ -42,3 +42,19 @@ class DataArguments:
     ignore_verifications: bool = field(
         default=False, metadata={"help":"Set to true to ignore dataset verifications."}
     )
+    lang_split: Optional[str] = field(
+        default=None,
+        metadata={"help": "The name of the language split to use."}
+    )
+    lang_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "The path to the language split to use."}
+    )
+    lang_splits: Optional[List[str]] = field(
+        default=None,
+        metadata={"help": "List of language splits to use (e.g., ['de', 'fr'])."}
+    )
+    lang_paths: Optional[List[str]] = field(
+        default=None,
+        metadata={"help": "List of paths corresponding to each language split."}
+    )

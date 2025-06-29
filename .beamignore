@@ -8,3 +8,10 @@ personal/
 wsl_venv/
 chatterbox-project
 chatterbox-test/
+beam_documentation/
+_tokenizers/
+emilia_ja_text_data.txt
+emilia_ja_text_preprocessed.txt
+tokenizer_scripts/
+t3_models/
+voices/
