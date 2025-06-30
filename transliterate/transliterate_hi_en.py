@@ -18,6 +18,9 @@ from threading import Lock
 from datasets import load_dataset, Dataset, Audio, DatasetDict
 from huggingface_hub import HfApi, login
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Import configuration
 try:
@@ -438,7 +441,7 @@ def upload_to_huggingface(processed_dataset, repo_id: str):
     
     try:
         # Login to Hugging Face (you'll need to set your token)
-        hf_token = "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"
+        hf_token = os.getenv("HF_TOKEN")
         if not hf_token:
             logger.warning("HF_TOKEN environment variable not set. You may need to login manually.")
             try:
