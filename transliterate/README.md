@@ -1,192 +1,205 @@
 # Hindi to English Transliteration Pipeline
 
-This script downloads the Whisper Hindi dataset, transliterates the Hindi sentences to English using the Reverie API, and uploads the processed dataset to Hugging Face.
+This script downloads the `shields/whisper-small-hindi` dataset, transliterates Hindi sentences to English using the Reverie API, and uploads the processed dataset to Hugging Face.
 
-## Setup
+## Features
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+- **Updated API Integration**: Uses the correct Reverie API endpoint and headers
+- **CSV Output**: Saves datasets as CSV files for easy processing
+- **Chunk-by-Chunk Processing**: Memory-efficient processing to avoid OOM issues
+- **Concurrent Processing**: Thread-safe API calls with rate limiting
+- **Robust Error Handling**: Fallback mechanisms and comprehensive logging
+- **Flexible Workflows**: Multiple command options for different use cases
 
-2. **Set up Hugging Face authentication:**
-   
-   You need to authenticate with Hugging Face to upload the dataset. You can do this in one of two ways:
-   
-   **Option A: Environment Variable (Recommended)**
-   ```bash
-   export HF_TOKEN="your_huggingface_token_here"
-   ```
-   
-   **Option B: CLI Login**
-   ```bash
-   huggingface-cli login
-   ```
-   
-   To get your Hugging Face token:
-   - Go to https://huggingface.co/settings/tokens
-   - Create a new token with "Write" permissions
-   - Copy the token
+## Quick Start
 
-3. **Verify repository access:**
-   Make sure you have write access to the target repository:
-   `https://huggingface.co/datasets/hrusheekeshsawarkar/whisper_hindi_small_T13N`
-
-## Usage
-
-**Test the transliteration first (recommended):**
+### 1. Test the API
 ```bash
 python transliterate_hi_en.py --test
 ```
 
-**Process dataset and save locally only (recommended for large datasets):**
+### 2. Full Pipeline (Recommended)
+Download → Transliterate → Save as CSV → Upload to HuggingFace:
+```bash
+python transliterate_hi_en.py --csv
+```
+
+### 3. Process Only (No Upload)
+Download → Transliterate → Save as CSV locally:
 ```bash
 python transliterate_hi_en.py --process-only
 ```
 
-**Upload locally saved dataset to Hugging Face:**
+### 4. Upload Previously Processed Dataset
 ```bash
 python transliterate_hi_en.py --upload
 ```
 
-**Check status of locally saved dataset:**
-```bash
-python check_dataset.py
+## Configuration
+
+The script uses `config.py` for configuration. Default values:
+
+- **Workers**: 10 concurrent threads
+- **Rate Limit**: 50 requests/second
+- **Batch Size**: 100 samples per batch
+- **Chunk Size**: 1000 samples per chunk
+- **Output Directory**: `processed_dataset/`
+- **Target Repository**: `hrusheekeshsawarkar/whisper_hindi_small_T13N`
+
+## API Configuration
+
+The script uses the Reverie API with these settings:
+
+- **Endpoint**: `https://revapi.reverieinc.com/`
+- **API Key**: `172c5bb5af18516905473091fd58d30afe740b3f`
+- **App ID**: `rev.transliteration`
+- **Source Language**: Hindi (hi)
+- **Target Language**: English (en)
+- **Domain**: 1
+
+## Output Format
+
+### CSV Files Generated
+
+The script generates CSV files with the following structure:
+
+| Column | Description |
+|--------|-------------|
+| `audio_path` | Audio file path/identifier |
+| `sampling_rate` | Audio sampling rate (16000 Hz) |
+| `sentence_hindi` | Original Hindi text in Devanagari |
+| `sentence_english` | Transliterated English text |
+
+### Files Created
+
+- `train.csv` - Training split data
+- `test.csv` - Test split data (if available)
+- `validation.csv` - Validation split data (if available)  
+- `metadata.json` - Dataset statistics and configuration
+
+## Example Usage
+
+### Loading the CSV Data
+
+```python
+import pandas as pd
+
+# Load the processed data
+train_df = pd.read_csv('processed_dataset/train.csv')
+
+print(f"Dataset size: {len(train_df)}")
+print("\nSample data:")
+for idx, row in train_df.head(3).iterrows():
+    print(f"Hindi: {row['sentence_hindi']}")
+    print(f"English: {row['sentence_english']}")
+    print()
 ```
 
-**View current configuration settings:**
-```bash
-python config_info.py
+### Using with Hugging Face Datasets
+
+```python
+from datasets import load_dataset
+
+# Load from CSV files
+dataset = load_dataset('csv', data_files={
+    'train': 'processed_dataset/train.csv',
+    'test': 'processed_dataset/test.csv'
+})
+
+print(dataset)
 ```
 
-**Monitor memory usage:**
+## Requirements
+
+Install dependencies:
+
 ```bash
-python memory_monitor.py
+pip install datasets huggingface_hub pandas requests python-dotenv psutil
 ```
 
-**Run the full pipeline (process + upload):**
+## Environment Setup
+
+1. **Hugging Face Token**: Set your HF token for uploading:
+   ```bash
+   export HF_TOKEN="your_huggingface_token"
+   ```
+   
+   Or create a `.env` file:
+   ```
+   HF_TOKEN=your_huggingface_token
+   ```
+
+2. **Configuration**: Create or modify `config.py` to adjust processing parameters:
+   ```python
+   MAX_WORKERS = 10
+   REQUESTS_PER_SECOND = 50.0
+   BATCH_SIZE = 100
+   CHUNK_SIZE = 1000
+   ```
+
+## Command Options
+
 ```bash
+# Show help
+python transliterate_hi_en.py --help
+
+# Test API with sample sentences
+python transliterate_hi_en.py --test
+
+# Full pipeline with CSV output
+python transliterate_hi_en.py --csv
+
+# Process only (save locally, no upload)
+python transliterate_hi_en.py --process-only
+
+# Upload previously processed dataset
+python transliterate_hi_en.py --upload
+
+# Default: Full pipeline with HF dataset format
 python transliterate_hi_en.py
 ```
 
-### Available Commands:
+## Performance
 
-- `--test`: Test transliteration with sample sentences
-- `--process-only`: Download, transliterate, and save locally (no upload)
-- `--upload`: Upload previously saved local dataset to Hugging Face
-- No arguments: Run full pipeline (process + save locally + upload)
+The script is optimized for large datasets:
 
-## Recommended Workflow (for large datasets):
+- **Memory Efficient**: Chunk-by-chunk processing prevents memory buildup
+- **Rate Limited**: Respects API limits to avoid blocking
+- **Concurrent**: Multi-threaded processing for faster execution
+- **Cached**: Avoids redundant API calls for repeated text
+- **Monitored**: Real-time memory and progress monitoring
 
-1. **Test first**: `python transliterate_hi_en.py --test`
-2. **Process and save locally**: `python transliterate_hi_en.py --process-only`
-3. **Check saved dataset**: `python check_dataset.py`
-4. **Upload when ready**: `python transliterate_hi_en.py --upload`
+## Troubleshooting
 
-This approach prevents data loss if the process gets interrupted and allows you to verify the results before uploading.
+### Memory Issues
+- Reduce `CHUNK_SIZE` in config.py
+- Reduce `MAX_WORKERS` for lower memory usage
+- Monitor memory with the built-in memory monitor
 
-## What the script does:
+### API Issues
+- Check API key and endpoint configuration
+- Reduce `REQUESTS_PER_SECOND` if hitting rate limits
+- Enable debug logging for detailed API responses
 
-1. **Downloads** the original dataset from `shields/whisper-small-hindi`
-2. **Transliterates** all Hindi sentences to English using the Reverie API
-3. **Creates** a new dataset with three columns:
-   - `audio`: Original audio files
-   - `sentence_hindi`: Original Hindi sentences in Devanagari script
-   - `sentence_english`: Transliterated English sentences
-4. **Saves locally** to `processed_dataset/` directory (NEW: prevents data loss)
-5. **Uploads** the processed dataset to `hrusheekeshsawarkar/whisper_hindi_small_T13N`
-6. **Creates** a dataset card with metadata and documentation
+### Upload Issues
+- Ensure HF_TOKEN is set correctly
+- Check repository permissions
+- Verify repository exists or can be created
 
-## Local Dataset Storage:
+## Sample Output
 
-The processed dataset is saved locally in the `processed_dataset/` directory with:
-- Full dataset in Hugging Face format
-- `metadata.json` with dataset statistics
-- This allows you to retry uploads or inspect the data locally
-
-## Features:
-
-- **Multiprocessing**: Uses concurrent threads to speed up API calls (configurable)
-- **Smart rate limiting**: Thread-safe rate limiting to respect API limits
-- **Incremental processing**: Saves chunks immediately to prevent memory buildup
-- **Memory monitoring**: Real-time memory usage tracking and warnings
-- **Local saving**: Saves dataset locally before uploading (prevents data loss)
-- **Memory efficient**: Processes data in chunks with automatic cleanup
-- **Configurable**: Easy-to-modify configuration file for performance tuning
-- **Error handling**: Gracefully handles API failures and network issues
-- **Logging**: Detailed progress logging throughout the process
-- **Batch processing**: Processes data in manageable batches
-- **Recovery**: Can resume from saved local dataset if interrupted
-- **Fallback**: If transliteration fails, keeps the original text
-
-## Performance Configuration:
-
-You can customize the processing speed and resource usage by editing `config.py`:
-
-```python
-# Multiprocessing configuration
-MAX_WORKERS = 8  # Number of concurrent threads (reduced for stability)
-REQUESTS_PER_SECOND = 20.0  # API rate limit (decreased if hitting limits)
-BATCH_SIZE = 50  # Texts per batch (reduced for memory management)
-CHUNK_SIZE = 500  # Samples per memory chunk (reduced to prevent memory issues)
+```
+2025-06-30 16:52:03,896 - INFO - Starting Hindi to English transliteration pipeline (CSV format)...
+2025-06-30 16:52:04,123 - INFO - Downloading original dataset from Hugging Face...
+2025-06-30 16:52:08,456 - INFO - Processing split: train (2542 samples)
+2025-06-30 16:52:08,789 - INFO - Processing chunk 1/3 for split train
+2025-06-30 16:52:25,123 - INFO - Completed batch 1/10 (100/1000 total samples)
+...
+2025-06-30 16:58:42,456 - INFO - CSV dataset saved successfully! Total samples: 2542
+2025-06-30 16:58:43,789 - INFO - Uploading CSV dataset to Hugging Face repository...
+2025-06-30 16:59:15,123 - INFO - CSV pipeline completed successfully!
 ```
 
-**Performance Tips:**
-- **Start conservative** - use default settings first
-- **Increase MAX_WORKERS** (e.g., 10-15) if memory allows
-- **Decrease REQUESTS_PER_SECOND** if you hit rate limits
-- **Increase BATCH_SIZE** cautiously (watch memory usage)
-- **Decrease CHUNK_SIZE** if getting killed (memory issues)
+## License
 
-**Memory Management:**
-- **Monitor memory**: `python memory_monitor.py`
-- **Real-time tracking**: Memory usage logged during processing
-- **Automatic warnings**: Alerts when memory usage gets high
-- **Incremental saving**: Chunks saved immediately to prevent buildup
-
-**Expected Performance:**
-- Conservative settings: ~160 requests/second theoretical (8 workers × 20 req/sec)
-- Full dataset (~9400 samples): ~1-2 minutes processing time
-- Memory usage: Stays constant regardless of dataset size
-
-## Dataset Structure:
-
-The output dataset will have approximately 9,434 rows across train and test splits, with each row containing:
-- Audio recording
-- Original Hindi sentence
-- Transliterated English sentence
-
-## Notes:
-
-- The script uses the Reverie API with the provided API key
-- Processing time depends on the API response time (expect several hours for the full dataset)
-- The script will preserve the original train/test splits from the source dataset
-
-## Troubleshooting:
-
-**If the process gets killed/interrupted:**
-- Check if data was saved: `python check_dataset.py`
-- If yes, upload directly: `python transliterate_hi_en.py --upload`
-- If no, restart with: `python transliterate_hi_en.py --process-only`
-
-**Memory issues (Process getting killed):**
-- **NEW**: Script now uses incremental processing to prevent memory buildup
-- **Monitor first**: `python memory_monitor.py` to check current usage
-- **Reduce CHUNK_SIZE**: Try 250 or 100 in `config.py` (default: 500)
-- **Reduce MAX_WORKERS**: Try 4-6 workers instead of 8
-- **Reduce BATCH_SIZE**: Try 25 instead of 50
-- **Check system memory**: Ensure you have at least 4GB free RAM
-
-**API issues:**
-- Test the API first: `python transliterate_hi_en.py --test`
-- Check your API key is correct and has quota remaining
-- If hitting rate limits, reduce `REQUESTS_PER_SECOND` in `config.py`
-- If getting timeouts, reduce `MAX_WORKERS` to decrease concurrent load
-
-**Performance tuning:**
-- **Start conservative**: Use default settings first
-- **Monitor memory**: Watch for warnings during processing
-- **Gradual increases**: Only increase settings if memory allows
-- **Watch for errors**: If you see many failures, reduce concurrency
-- **Use debug logging**: Set `LOG_LEVEL = "DEBUG"` in `config.py`
-- **Memory reports**: Script provides detailed memory usage reports 
+This project follows the same license as the original dataset (Apache 2.0). 
