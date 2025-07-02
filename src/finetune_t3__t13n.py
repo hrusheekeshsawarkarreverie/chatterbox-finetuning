@@ -695,6 +695,24 @@ def main():
         for param in chatterbox_model.s3gen.parameters(): param.requires_grad = False
         logger.info("S3Gen model frozen.")
     for param in t3_model.parameters(): param.requires_grad = True
+    
+    # Freeze original text embeddings if specified
+    if model_args.freeze_text_embeddings is not None:
+        freeze_vocab_size = model_args.freeze_text_embeddings
+        current_vocab_size = chatterbox_t3_config_instance.text_tokens_dict_size
+        if current_vocab_size > freeze_vocab_size:
+            # We'll mask gradients in a training hook instead of setting requires_grad
+            def mask_old_token_gradients(module, grad_input, grad_output):
+                if hasattr(module, 'weight') and module.weight.grad is not None:
+                    module.weight.grad[:freeze_vocab_size] = 0
+            
+            t3_model.text_emb.register_backward_hook(mask_old_token_gradients)
+            t3_model.text_head.register_backward_hook(mask_old_token_gradients)
+            logger.info(f"Added gradient masking for original text embeddings (first {freeze_vocab_size} tokens)")
+        else:
+            logger.warning(f"Cannot freeze {freeze_vocab_size} tokens - current vocab size is only {current_vocab_size}")
+    
+
     logger.info("T3 model set to trainable.")
 
     logger.info("Loading and processing dataset...")
