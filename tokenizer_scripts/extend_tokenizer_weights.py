@@ -186,7 +186,7 @@ IMAGE = Image(
     ]
 )
 
-CHATTERBOX_PROJECT = "./chatterbox-project"
+CHATTERBOX_PROJECT = "pretrained_model_download"
 
 @function(
     image=IMAGE,

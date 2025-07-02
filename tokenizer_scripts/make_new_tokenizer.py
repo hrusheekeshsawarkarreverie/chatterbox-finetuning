@@ -240,15 +240,18 @@ def analyze_tokenizer(tokenizer_path: str):
 
 def main():
     import os
-    text_file = "tokenizer_scripts/emilia_yodas_fr_text.txt"
-    vocab_size = 100
-    output_path = "fr_tokenizer_100.json"
-    existing_tokenizer_path = "chatterbox-project/chatterbox_weights/tokenizer.json"
+    text_file = "data/hindi_sentences_500.txt"
+    vocab_size = 500
+    output_path = "hi_tokenizer_500.json"
+    # existing_tokenizer_path = "chatterbox-project/chatterbox_weights/tokenizer.json"
+    existing_tokenizer_path = "../src/checkpoints/chatterbox_finetuned_t13n/pretrained_model_download/tokenizer.json"
     
     if not os.path.exists(text_file):
+        print(f"Error: Text file not found: {text_file}")
         return
     
     if not os.path.exists(existing_tokenizer_path):
+        print(f"Error: Existing tokenizer not found: {existing_tokenizer_path}")
         existing_tokenizer_path = None
     
     tokenizer_path = create_japanese_tokenizer(text_file, vocab_size, output_path, existing_tokenizer_path)

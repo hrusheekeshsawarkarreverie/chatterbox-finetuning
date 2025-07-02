@@ -42,6 +42,7 @@ pip-delete-this-directory.txt
 
 syn_out/
 checkpoints/
+pretrained_model_download/
 .gradio
 
 # Ignore generated sample .wav files
