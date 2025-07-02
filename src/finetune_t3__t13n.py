@@ -547,6 +547,10 @@ class SpeechDataCollator:
         T_speech = shifted_speech.size(1)
 
         # Mask positions t >= (speech_len - 1)
+        # speech_lens_minus_one = (speech_token_lens - 1).clamp(min=0)  # (B,)
+        # arange_speech = torch.arange(T_speech, device=shifted_speech.device)  # (T_speech,)
+        # mask_pad_speech = arange_speech[None] >= speech_lens_minus_one[:, None]  # (B, T_speech)
+        speech_token_lens = speech_token_lens.to(shifted_speech.device)
         speech_lens_minus_one = (speech_token_lens - 1).clamp(min=0)  # (B,)
         arange_speech = torch.arange(T_speech, device=shifted_speech.device)  # (T_speech,)
         mask_pad_speech = arange_speech[None] >= speech_lens_minus_one[:, None]  # (B, T_speech)
@@ -659,7 +663,7 @@ def main():
     if model_args.local_model_dir:
         logger.info(f"Loading model from local directory: {model_args.local_model_dir}")
         local_dir_path = Path(model_args.local_model_dir)
-        chatterbox_model = ChatterboxTTS.from_local(ckpt_dir=str(local_dir_path), device="cpu")
+        chatterbox_model = ChatterboxTTS.from_local(ckpt_dir=str(local_dir_path), device="cuda")
         original_model_dir_for_copy = local_dir_path
     else:
         repo_to_download = model_args.model_name_or_path or REPO_ID
@@ -678,7 +682,7 @@ def main():
         except: logger.info("conds.pt not found on Hub or failed to download for this model.")
 
 
-        chatterbox_model = ChatterboxTTS.from_local(ckpt_dir=download_dir, device="cpu")
+        chatterbox_model = ChatterboxTTS.from_local(ckpt_dir=download_dir, device="cuda")
         original_model_dir_for_copy = download_dir
 
     t3_model = chatterbox_model.t3

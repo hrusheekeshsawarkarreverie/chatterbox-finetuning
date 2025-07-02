@@ -212,7 +212,7 @@ def download_dataset():
     logger.info("Downloading original dataset from Hugging Face...")
     
     try:
-        dataset = load_dataset("shields/whisper-small-hindi")
+        dataset = load_dataset("shields/whisper-small-hindi", token=os.getenv("HF_TOKEN"))
         logger.info(f"Dataset downloaded successfully. Available splits: {list(dataset.keys())}")
         return dataset
     except Exception as e:
