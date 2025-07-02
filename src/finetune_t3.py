@@ -65,6 +65,7 @@ class ModelArguments:
     )
     freeze_voice_encoder: bool = field(default=True, metadata={"help": "Freeze the Voice Encoder."})
     freeze_s3gen: bool = field(default=True, metadata={"help": "Freeze the S3Gen model (speech token to waveform)."})
+    freeze_text_embeddings: Optional[int] = field(default=None, metadata={"help": "Number of original text embedding tokens to freeze (e.g., 704 for original vocab size)."})
 
 @dataclass
 class DataArguments:
