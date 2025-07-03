@@ -189,8 +189,12 @@ class SpeechFineTuningDataset(Dataset):
         text_tokens = F.pad(text_tokens, (0, 1), value=self.chatterbox_t3_config.stop_text_token)
         if len(text_tokens) > self.data_args.max_text_len:
             text_tokens = text_tokens[:self.data_args.max_text_len-1]
-            text_tokens = torch.cat([text_tokens, torch.tensor([self.chatterbox_t3_config.stop_text_token], device=text_tokens.device)])
+            text_tokens = torch.cat([text_tokens, torch.tensor([self.chatterbox_t3_config.stop_text_token])])
         text_token_len = torch.tensor(len(text_tokens), dtype=torch.long)
+        
+        # Ensure tensors are on CPU for dataset
+        text_tokens = text_tokens.cpu()
+        text_token_len = text_token_len.cpu()
 
         try:
             raw_speech_tokens_batch, speech_token_lengths_batch = self.speech_tokenizer.forward([wav_16k])
@@ -206,8 +210,12 @@ class SpeechFineTuningDataset(Dataset):
         speech_tokens = F.pad(speech_tokens, (0, 1), value=self.chatterbox_t3_config.stop_speech_token)
         if len(speech_tokens) > self.data_args.max_speech_len:
             speech_tokens = speech_tokens[:self.data_args.max_speech_len-1]
-            speech_tokens = torch.cat([speech_tokens, torch.tensor([self.chatterbox_t3_config.stop_speech_token], device=speech_tokens.device)])
+            speech_tokens = torch.cat([speech_tokens, torch.tensor([self.chatterbox_t3_config.stop_speech_token])])
         speech_token_len = torch.tensor(len(speech_tokens), dtype=torch.long)
+        
+        # Ensure tensors are on CPU for dataset  
+        speech_tokens = speech_tokens.cpu()
+        speech_token_len = speech_token_len.cpu()
 
         cond_audio_segment = wav_16k[:self.enc_cond_audio_len_samples]
         if len(cond_audio_segment) == 0 :
@@ -233,14 +241,15 @@ class SpeechFineTuningDataset(Dataset):
         emotion_adv_scalar=0.5
         emotion_adv_scalar_tensor = torch.tensor(emotion_adv_scalar, dtype=torch.float)
 
+        # Ensure all tensors are on CPU for dataset
         return_dict = {
-            "text_tokens": text_tokens.long(),
-            "text_token_lens": text_token_len.long(),
-            "speech_tokens": speech_tokens.long(),
-            "speech_token_lens": speech_token_len.long(),
-            "t3_cond_speaker_emb": speaker_emb.float(),
-            "t3_cond_prompt_speech_tokens": cond_prompt_speech_tokens.long(),
-            "t3_cond_emotion_adv": emotion_adv_scalar_tensor,
+            "text_tokens": text_tokens.long().cpu(),
+            "text_token_lens": text_token_len.long().cpu(),
+            "speech_tokens": speech_tokens.long().cpu(),
+            "speech_token_lens": speech_token_len.long().cpu(),
+            "t3_cond_speaker_emb": speaker_emb.float().cpu(),
+            "t3_cond_prompt_speech_tokens": cond_prompt_speech_tokens.long().cpu(),
+            "t3_cond_emotion_adv": emotion_adv_scalar_tensor.cpu(),
         }
 
         return return_dict
