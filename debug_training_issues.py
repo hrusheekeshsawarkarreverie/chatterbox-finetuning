@@ -90,7 +90,12 @@ python src/finetune_t3.py \\
     --max_text_len 96 \\
     --max_speech_len 300 \\
     --preprocessing_num_workers 4 \\
-    --early_stopping_patience 3
+    --early_stopping_patience 3 \\
+    --metric_for_best_model eval_loss \\
+    --greater_is_better False \\
+    --load_best_model_at_end True \\
+    --evaluation_strategy steps \\
+    --eval_steps 500
 
 echo "Training completed with fixed parameters!"
 echo "GPU memory usage:"
@@ -106,7 +111,7 @@ python -c "import torch; print(f'GPU memory allocated: {torch.cuda.memory_alloca
     print("3. ✅ Reduced epochs: 20 → 12 (prevent overfitting)")
     print("4. ✅ Increased warmup: 100 → 200 steps") 
     print("5. ✅ Reduced sequence lengths (more efficient)")
-    print("6. ✅ Added early stopping patience")
+    print("6. ✅ Added early stopping with proper evaluation setup")
     print("7. ✅ GPU memory monitoring and CUDA optimizations")
     print("8. ✅ REMOVED INVALID ARGUMENTS that don't exist in finetune_t3.py:")
     print("   - eval_strategy (use built-in evaluation logic)")
