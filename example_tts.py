@@ -42,7 +42,7 @@ model = ChatterboxTTS.from_local(
 model.tokenizer = tokenizer  # <- inject it manually if not already handled inside `from_local`
 
 # text = "Ezreal and Jinx teamed up with Ahri [giggle], Yasuo, and Teemo to take down [exhale] the enemy's Nexus in an epic late-game pentakill. [whistle]"
-text = " नमस्ते, आप कैसे हैं?"
+text = " किन्तु आधुनिक पांडित्य, न सिर्फ़ एक ब्राह्मण रामानंद के, एक जुलाहे कबीर का गुरु होने से, बल्कि दोनों के समकालीन होने से भी, इनकार करता है"
 # text = "toh, aapne jo gold loan liya hai, uska 15000 payment baaki hai, and its due on 10th july, to payment kab tak kar paoge aap??"
 # text = "namaste, me meera bol rahi hu muthoot finance se, mene aapki home loan ke liye call kiya tha"
 # tokens = tokenizer.tokenize(text)
