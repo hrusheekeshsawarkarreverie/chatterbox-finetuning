@@ -178,30 +178,26 @@ class SpeechFineTuningDataset(Dataset):
 
         try:
             speaker_emb_np = self.voice_encoder.embeds_from_wavs([wav_16k], sample_rate=self.s3_sr)
-            speaker_emb = torch.from_numpy(speaker_emb_np[0])
+            speaker_emb = torch.from_numpy(speaker_emb_np[0]).cpu()
         except Exception as e:
             logger.error(f"Error getting speaker embedding for item {idx}: {e}. Skipping.")
             return None
 
         normalized_text = punc_norm(text)
-        raw_text_tokens = self.text_tokenizer.text_to_tokens(normalized_text).squeeze(0)
+        raw_text_tokens = self.text_tokenizer.text_to_tokens(normalized_text).squeeze(0).cpu()
         text_tokens = F.pad(raw_text_tokens, (1, 0), value=self.chatterbox_t3_config.start_text_token)
         text_tokens = F.pad(text_tokens, (0, 1), value=self.chatterbox_t3_config.stop_text_token)
         if len(text_tokens) > self.data_args.max_text_len:
             text_tokens = text_tokens[:self.data_args.max_text_len-1]
             text_tokens = torch.cat([text_tokens, torch.tensor([self.chatterbox_t3_config.stop_text_token])])
         text_token_len = torch.tensor(len(text_tokens), dtype=torch.long)
-        
-        # Ensure tensors are on CPU for dataset
-        text_tokens = text_tokens.cpu()
-        text_token_len = text_token_len.cpu()
 
         try:
             raw_speech_tokens_batch, speech_token_lengths_batch = self.speech_tokenizer.forward([wav_16k])
             if raw_speech_tokens_batch is None or speech_token_lengths_batch is None:
                 logger.error(f"S3Tokenizer returned None for item {idx}. Skipping.")
                 return None
-            raw_speech_tokens = raw_speech_tokens_batch.squeeze(0)[:speech_token_lengths_batch.squeeze(0).item()]
+            raw_speech_tokens = raw_speech_tokens_batch.squeeze(0)[:speech_token_lengths_batch.squeeze(0).item()].cpu()
         except Exception as e:
             logger.error(f"Error getting speech tokens for item {idx}: {e}. Skipping.")
             return None
@@ -212,10 +208,6 @@ class SpeechFineTuningDataset(Dataset):
             speech_tokens = speech_tokens[:self.data_args.max_speech_len-1]
             speech_tokens = torch.cat([speech_tokens, torch.tensor([self.chatterbox_t3_config.stop_speech_token])])
         speech_token_len = torch.tensor(len(speech_tokens), dtype=torch.long)
-        
-        # Ensure tensors are on CPU for dataset  
-        speech_tokens = speech_tokens.cpu()
-        speech_token_len = speech_token_len.cpu()
 
         cond_audio_segment = wav_16k[:self.enc_cond_audio_len_samples]
         if len(cond_audio_segment) == 0 :
@@ -227,7 +219,7 @@ class SpeechFineTuningDataset(Dataset):
                     #  logger.error(f"S3Tokenizer returned None for cond_prompt for item {idx}. Using zeros.")
                      cond_prompt_speech_tokens = torch.zeros(self.chatterbox_t3_config.speech_cond_prompt_len, dtype=torch.long)
                 else:
-                    cond_prompt_speech_tokens = cond_prompt_tokens_batch.squeeze(0)
+                    cond_prompt_speech_tokens = cond_prompt_tokens_batch.squeeze(0).cpu()
             except Exception as e:
                 # logger.error(f"Error getting cond prompt tokens for item {idx}: {e}. Using zeros.")
                 cond_prompt_speech_tokens = torch.zeros(self.chatterbox_t3_config.speech_cond_prompt_len, dtype=torch.long)
@@ -241,15 +233,14 @@ class SpeechFineTuningDataset(Dataset):
         emotion_adv_scalar=0.5
         emotion_adv_scalar_tensor = torch.tensor(emotion_adv_scalar, dtype=torch.float)
 
-        # Ensure all tensors are on CPU for dataset
         return_dict = {
-            "text_tokens": text_tokens.long().cpu(),
-            "text_token_lens": text_token_len.long().cpu(),
-            "speech_tokens": speech_tokens.long().cpu(),
-            "speech_token_lens": speech_token_len.long().cpu(),
-            "t3_cond_speaker_emb": speaker_emb.float().cpu(),
-            "t3_cond_prompt_speech_tokens": cond_prompt_speech_tokens.long().cpu(),
-            "t3_cond_emotion_adv": emotion_adv_scalar_tensor.cpu(),
+            "text_tokens": text_tokens.long(),
+            "text_token_lens": text_token_len.long(),
+            "speech_tokens": speech_tokens.long(),
+            "speech_token_lens": speech_token_len.long(),
+            "t3_cond_speaker_emb": speaker_emb.float(),
+            "t3_cond_prompt_speech_tokens": cond_prompt_speech_tokens.long(),
+            "t3_cond_emotion_adv": emotion_adv_scalar_tensor,
         }
 
         return return_dict
