@@ -571,16 +571,6 @@ def main():
     
     callbacks = []
     if training_args.early_stopping_patience is not None and training_args.early_stopping_patience > 0:
-        # Set required parameters for early stopping
-        if training_args.metric_for_best_model is None:
-            training_args.metric_for_best_model = "eval_loss"
-        if training_args.greater_is_better is None:
-            training_args.greater_is_better = False  # For loss, lower is better
-        if not training_args.load_best_model_at_end:
-            training_args.load_best_model_at_end = True
-        if training_args.evaluation_strategy == "no":
-            training_args.evaluation_strategy = "steps"
-            training_args.eval_steps = 500  # Evaluate every 500 steps
         callbacks.append(EarlyStoppingCallback(early_stopping_patience=training_args.early_stopping_patience))
 
     trainer_instance = Trainer(
