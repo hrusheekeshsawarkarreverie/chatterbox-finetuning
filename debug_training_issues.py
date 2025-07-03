@@ -93,7 +93,6 @@ python src/finetune_t3.py \\
     --early_stopping_patience 3 \\
     --metric_for_best_model eval_loss \\
     --greater_is_better False \\
-    --evaluation_strategy steps \\
     --eval_steps 500 \\
     --save_strategy steps
 
