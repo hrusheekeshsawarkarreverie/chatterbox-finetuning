@@ -57,7 +57,7 @@ def create_fixed_training_script():
 
 # Fixed Hindi TTS Training Script
 # This addresses the identified issues with Hindi embedding training
-# Optimized for GPU (CUDA) training on A100
+# Uses only VALID arguments supported by the finetune_t3.py script
 
 # Check GPU availability
 echo "Checking GPU availability..."
@@ -68,7 +68,7 @@ export CUDA_LAUNCH_BLOCKING=0
 export TORCH_CUDA_ARCH_LIST="8.0"  # A100 architecture
 export CUDA_VISIBLE_DEVICES=0
 
-# Run training with GPU-optimized settings
+# Run training with VALID parameters only
 python src/finetune_t3.py \\
     --output_dir ./checkpoints/chatterbox_finetuned_indictts_fixed \\
     --model_name_or_path hrusheekeshsawarkar/base-hi-tts \\
@@ -81,25 +81,16 @@ python src/finetune_t3.py \\
     --learning_rate 5e-5 \\
     --warmup_steps 200 \\
     --logging_steps 10 \\
-    --eval_strategy steps \\
-    --eval_steps 500 \\
-    --save_strategy steps \\
     --save_steps 1000 \\
     --save_total_limit 4 \\
-    --fp16 True \\
-    --dataloader_pin_memory True \\
-    --dataloader_num_workers 0 \\
-    --report_to tensorboard \\
+    --fp16 \\
     --do_train --do_eval \\
-    --label_names labels_speech \\
     --text_column_name text \\
     --freeze_text_embeddings 704 \\
     --max_text_len 96 \\
     --max_speech_len 300 \\
-    --max_grad_norm 1.0 \\
-    --weight_decay 0.01 \\
-    --ddp_find_unused_parameters False \\
-    --remove_unused_columns False
+    --preprocessing_num_workers 4 \\
+    --early_stopping_patience 3
 
 echo "Training completed with fixed parameters!"
 echo "GPU memory usage:"
@@ -109,15 +100,23 @@ python -c "import torch; print(f'GPU memory allocated: {torch.cuda.memory_alloca
     with open("train_hindi_fixed.sh", "w") as f:
         f.write(script_content)
     
-    print("Created train_hindi_fixed.sh with the following fixes:")
+    print("Created train_hindi_fixed.sh with the following VALID fixes:")
     print("1. ✅ Increased learning rate: 5e-6 → 5e-5 (10x higher)")
-    print("2. ✅ GPU-optimized: batch_size=4, pin_memory=True, workers=4")
+    print("2. ✅ Optimized batch size: 2 → 4 with grad_accumulation=2")
     print("3. ✅ Reduced epochs: 20 → 12 (prevent overfitting)")
     print("4. ✅ Increased warmup: 100 → 200 steps") 
     print("5. ✅ Reduced sequence lengths (more efficient)")
-    print("6. ✅ Added gradient clipping (stability)")
-    print("7. ✅ Added weight decay (regularization)")
-    print("8. ✅ GPU memory monitoring and CUDA optimizations")
+    print("6. ✅ Added early stopping patience")
+    print("7. ✅ GPU memory monitoring and CUDA optimizations")
+    print("8. ✅ REMOVED INVALID ARGUMENTS that don't exist in finetune_t3.py:")
+    print("   - eval_strategy (use built-in evaluation logic)")
+    print("   - dataloader_pin_memory (not supported)")
+    print("   - dataloader_num_workers (use preprocessing_num_workers)")
+    print("   - report_to (not supported)")
+    print("   - max_grad_norm (not supported)")
+    print("   - weight_decay (not supported)")
+    print("   - ddp_find_unused_parameters (not supported)")
+    print("   - remove_unused_columns (not supported)")
     
     return "train_hindi_fixed.sh"
 
