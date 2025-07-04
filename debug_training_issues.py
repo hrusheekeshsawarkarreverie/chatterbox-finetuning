@@ -76,7 +76,7 @@ python src/finetune_t3.py \\
     --train_split_name train \\
     --eval_split_size 0.01 \\
     --num_train_epochs 12 \\
-    --per_device_train_batch_size 4 \\
+    --per_device_train_batch_size 12 \\
     --gradient_accumulation_steps 2 \\
     --learning_rate 5e-5 \\
     --warmup_steps 200 \\
@@ -98,8 +98,17 @@ python src/finetune_t3.py \\
     --save_strategy steps
 
 echo "Training completed with fixed parameters!"
-echo "GPU memory usage:"
+echo "Final GPU memory usage:"
 python -c "import torch; print(f'GPU memory allocated: {torch.cuda.memory_allocated()/1e9:.2f} GB'); print(f'GPU memory cached: {torch.cuda.memory_reserved()/1e9:.2f} GB')" 2>/dev/null || echo "No GPU stats available"
+
+echo ""
+echo "🚀 BATCH SIZE OPTIMIZATION NOTES:"
+echo "Current: batch_size=12, effective_batch=24"
+echo "If you want to further optimize:"
+echo "- Monitor GPU memory during training with: python monitor_gpu.py"
+echo "- If memory usage < 70%, try batch_size=16 or 20"
+echo "- If OOM error, reduce batch_size to 8 or 6"
+echo "- A100-80GB can handle much larger batches than A100-40GB"
 '''
     
     with open("train_hindi_fixed.sh", "w") as f:
@@ -107,7 +116,7 @@ python -c "import torch; print(f'GPU memory allocated: {torch.cuda.memory_alloca
     
     print("Created train_hindi_fixed.sh with the following VALID fixes:")
     print("1. ✅ Increased learning rate: 5e-6 → 5e-5 (10x higher)")
-    print("2. ✅ Optimized batch size: 2 → 4 with grad_accumulation=2")
+    print("2. ✅ Optimized batch size: 2 → 12 with grad_accumulation=2 (effective batch=24)")
     print("3. ✅ Reduced epochs: 20 → 12 (prevent overfitting)")
     print("4. ✅ Increased warmup: 100 → 200 steps") 
     print("5. ✅ Reduced sequence lengths (more efficient)")
@@ -324,8 +333,9 @@ def main():
     print("   - CUDA environment variables set for A100")
     print("   - Memory pinning enabled for faster data transfer")
     print("   - 4 data loader workers for parallel processing")
-    print("   - Batch size optimized for A100 GPU memory")
+    print("   - Batch size optimized for A100: 12 → effective batch 24")
     print("   - FP16 training for faster computation")
+    print("   - Monitor GPU usage to find optimal batch size")
 
 if __name__ == "__main__":
     main() 
