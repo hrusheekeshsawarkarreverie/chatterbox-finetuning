@@ -75,8 +75,8 @@ python src/finetune_t3.py \\
     --dataset_name SPRINGLab/IndicTTS-Hindi \\
     --train_split_name train \\
     --eval_split_size 0.01 \\
-    --num_train_epochs 15 \\
-    --per_device_train_batch_size 32 \\
+    --num_train_epochs 30 \\
+    --per_device_train_batch_size 56 \\
     --gradient_accumulation_steps 2 \\
     --learning_rate 5e-5 \\
     --warmup_steps 200 \\
