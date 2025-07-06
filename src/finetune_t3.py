@@ -395,7 +395,13 @@ class T3ForFineTuning(torch.nn.Module):
         
         total_loss = loss_text + loss_speech
 
-        return total_loss, speech_logits
+        # Return loss and additional outputs in a dict format for proper logging
+        return {
+            'loss': total_loss,
+            'text_loss': loss_text,
+            'speech_loss': loss_speech,
+            'logits': speech_logits
+        }
 
 
 
@@ -582,7 +588,9 @@ def main():
         callbacks=callbacks if callbacks else None
     )
 
-    if training_args.label_names is None: trainer_instance.label_names = ["lables"]
+    # Set proper label names for the trainer
+    if training_args.label_names is None: 
+        trainer_instance.label_names = ["labels_text", "labels_speech"]
 
 
     if training_args.do_train:
