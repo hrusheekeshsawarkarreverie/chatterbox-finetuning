@@ -70,7 +70,7 @@ export CUDA_VISIBLE_DEVICES=0
 
 # Run training with VALID parameters only
 python src/finetune_t3.py \\
-    --output_dir ./checkpoints/chatterbox_finetuned_indictts_fixed \\
+    --output_dir ./checkpoints/chatterbox_finetuned_indictts_fixed_30epochs \\
     --model_name_or_path hrusheekeshsawarkar/base-hi-tts \\
     --dataset_name SPRINGLab/IndicTTS-Hindi \\
     --train_split_name train \\
