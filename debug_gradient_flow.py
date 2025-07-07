@@ -97,15 +97,16 @@ class GradientMonitor:
         batch_size = 2
         seq_len = 10
         hidden_size = self.model.t3.dim
+        device = self.model.t3.device
         
-        # Create dummy inputs
-        dummy_input = torch.randn(batch_size, seq_len, hidden_size, requires_grad=True)
+        # Create dummy inputs on the correct device
+        dummy_input = torch.randn(batch_size, seq_len, hidden_size, requires_grad=True, device=device)
         
         # Forward pass through text_head
         logits = self.model.t3.text_head(dummy_input)
         
-        # Create dummy targets (mix of English and Hindi tokens)
-        targets = torch.randint(0, 2000, (batch_size, seq_len))
+        # Create dummy targets (mix of English and Hindi tokens) on the correct device
+        targets = torch.randint(0, 2000, (batch_size, seq_len), device=device)
         
         # Compute loss
         loss = nn.CrossEntropyLoss()(logits.view(-1, logits.size(-1)), targets.view(-1))
@@ -177,11 +178,40 @@ def debug_single_batch():
     
     # Load model
     print("Loading model...")
-    chatterbox_model = ChatterboxTTS.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        device="cuda"
-    )
+    from huggingface_hub import hf_hub_download
+    from pathlib import Path
+    
+    # Download model files first
+    download_dir = Path("./temp_model_debug")
+    download_dir.mkdir(exist_ok=True)
+    files_to_download = ["ve.safetensors", "t3_cfg.safetensors", "s3gen.safetensors", "tokenizer.json"]
+    
+    for f in files_to_download:
+        try:
+            hf_hub_download(
+                repo_id=model_args.model_name_or_path,
+                filename=f,
+                local_dir=download_dir,
+                local_dir_use_symlinks=False,
+                cache_dir=model_args.cache_dir
+            )
+        except Exception as e:
+            print(f"Warning: Could not download {f}: {e}")
+    
+    # Try to download conds.pt as well
+    try:
+        hf_hub_download(
+            repo_id=model_args.model_name_or_path,
+            filename="conds.pt",
+            local_dir=download_dir,
+            local_dir_use_symlinks=False,
+            cache_dir=model_args.cache_dir
+        )
+    except:
+        print("Note: conds.pt not found (optional)")
+    
+    # Load model from local directory
+    chatterbox_model = ChatterboxTTS.from_local(ckpt_dir=str(download_dir), device="cuda")
     
     t3_model = chatterbox_model.t3
     chatterbox_t3_config = t3_model.hp
@@ -286,8 +316,38 @@ def analyze_token_usage():
     dataset = load_dataset("SPRINGLab/IndicTTS-Hindi", split="train")
     
     # Load model for tokenizer
-    model = ChatterboxTTS.from_pretrained("hrusheekeshsawarkar/base-hi-tts")
-    tokenizer = model.tokenizer
+    from huggingface_hub import hf_hub_download
+    from pathlib import Path
+    
+    # Download tokenizer
+    download_dir = Path("./temp_tokenizer_debug")
+    download_dir.mkdir(exist_ok=True)
+    
+    try:
+        hf_hub_download(
+            repo_id="hrusheekeshsawarkar/base-hi-tts",
+            filename="tokenizer.json",
+            local_dir=download_dir,
+            local_dir_use_symlinks=False
+        )
+        
+        # Download minimal model files for tokenizer
+        for f in ["ve.safetensors", "t3_cfg.safetensors", "s3gen.safetensors"]:
+            try:
+                hf_hub_download(
+                    repo_id="hrusheekeshsawarkar/base-hi-tts",
+                    filename=f,
+                    local_dir=download_dir,
+                    local_dir_use_symlinks=False
+                )
+            except:
+                pass
+        
+        model = ChatterboxTTS.from_local(ckpt_dir=str(download_dir), device="cpu")
+        tokenizer = model.tokenizer
+    except Exception as e:
+        print(f"Error loading tokenizer: {e}")
+        return {}
     
     # Analyze first 100 samples
     token_counts = {}

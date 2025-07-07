@@ -17,7 +17,37 @@ def check_embedding_initialization():
     print("=" * 60)
     
     # Load base model
-    model = ChatterboxTTS.from_pretrained("hrusheekeshsawarkar/base-hi-tts", device="cpu")
+    from huggingface_hub import hf_hub_download
+    
+    # Download model files first
+    download_dir = Path("./temp_model_analysis")
+    download_dir.mkdir(exist_ok=True)
+    files_to_download = ["ve.safetensors", "t3_cfg.safetensors", "s3gen.safetensors", "tokenizer.json"]
+    
+    for f in files_to_download:
+        try:
+            hf_hub_download(
+                repo_id="hrusheekeshsawarkar/base-hi-tts",
+                filename=f,
+                local_dir=download_dir,
+                local_dir_use_symlinks=False
+            )
+        except Exception as e:
+            print(f"Warning: Could not download {f}: {e}")
+    
+    # Try to download conds.pt as well
+    try:
+        hf_hub_download(
+            repo_id="hrusheekeshsawarkar/base-hi-tts",
+            filename="conds.pt",
+            local_dir=download_dir,
+            local_dir_use_symlinks=False
+        )
+    except:
+        print("Note: conds.pt not found (optional)")
+    
+    # Load model from local directory
+    model = ChatterboxTTS.from_local(ckpt_dir=str(download_dir), device="cpu")
     
     text_emb = model.t3.text_emb.weight.data
     text_head = model.t3.text_head.weight.data
@@ -146,8 +176,15 @@ def check_batch_size_impact():
     
     # Load dataset to check token distribution
     dataset = load_dataset("SPRINGLab/IndicTTS-Hindi", split="train")
-    model = ChatterboxTTS.from_pretrained("hrusheekeshsawarkar/base-hi-tts", device="cpu")
-    tokenizer = model.tokenizer
+    
+    # Use the already downloaded model if available
+    download_dir = Path("./temp_model_analysis")
+    if download_dir.exists():
+        model = ChatterboxTTS.from_local(ckpt_dir=str(download_dir), device="cpu")
+        tokenizer = model.tokenizer
+    else:
+        print("Error: Model not found. Run check_embedding_initialization first.")
+        return
     
     # Sample different batch sizes
     batch_sizes = [2, 8, 16, 32, 56]
