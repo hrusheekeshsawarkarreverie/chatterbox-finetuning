@@ -24,6 +24,14 @@ class HFTokenizerWrapper:
         print("Used input_ids:", self.tokenizer(text, return_tensors="pt").input_ids[0].tolist())
 
         return self.tokenizer(text, return_tensors="pt").input_ids.to(self.device)
+    
+    def tokenize(self, text):
+        """Tokenize text and return list of tokens"""
+        return self.tokenizer.tokenize(text)
+    
+    def convert_tokens_to_ids(self, tokens):
+        """Convert tokens to their corresponding IDs"""
+        return self.tokenizer.convert_tokens_to_ids(tokens)
 
 
 # model = ChatterboxTTS.from_pretrained(device=device)
@@ -45,11 +53,11 @@ model.tokenizer = tokenizer  # <- inject it manually if not already handled insi
 text = " किन्तु आधुनिक पांडित्य, न सिर्फ़ एक ब्राह्मण रामानंद के, एक जुलाहे कबीर का गुरु होने से, बल्कि दोनों के समकालीन होने से भी, इनकार करता है"
 # text = "toh, aapne jo gold loan liya hai, uska 15000 payment baaki hai, and its due on 10th july, to payment kab tak kar paoge aap??"
 # text = "namaste, me meera bol rahi hu muthoot finance se, mene aapki home loan ke liye call kiya tha"
-# tokens = tokenizer.tokenize(text)
-# ids = tokenizer.convert_tokens_to_ids(tokens)
+tokens = tokenizer.tokenize(text)
+ids = tokenizer.convert_tokens_to_ids(tokens)
 
-# print("Tokens:", tokens)
-# print("IDs:", ids)
+print("Tokens:", tokens)
+print("IDs:", ids)
 start_time = time.time()
 wav = model.generate(text,exaggeration=0.4,
         cfg_weight=0.8,
