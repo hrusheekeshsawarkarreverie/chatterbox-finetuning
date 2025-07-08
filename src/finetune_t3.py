@@ -198,6 +198,31 @@ class SpeechFineTuningDataset(Dataset):
             logger.info(f"Sample {idx} - Raw text tokens: {raw_text_tokens.tolist()[:20]}... (len={len(raw_text_tokens)})")
             logger.info(f"Sample {idx} - Text tokens with BOS/EOS: {text_tokens.tolist()[:20]}... (len={len(text_tokens)})")
             
+            # Show tokenizer encode and decode function outputs
+            logger.info(f"🔧 Tokenizer Encode/Decode Analysis for Sample {idx}:")
+            logger.info(f"  Original text: '{normalized_text}'")
+            
+            # Show encode process
+            try:
+                # Test the encode function directly
+                encoded_ids = self.text_tokenizer.encode(normalized_text)
+                logger.info(f"  Encoded IDs: {encoded_ids}")
+                
+                # Show text after space replacement (internal to encode)
+                text_with_spaces_replaced = normalized_text.replace(' ', '[SPACE]')
+                logger.info(f"  Text after space replacement: '{text_with_spaces_replaced}'")
+                
+                # Show decode process
+                decoded_text = self.text_tokenizer.decode(encoded_ids)
+                logger.info(f"  Decoded text: '{decoded_text}'")
+                
+                # Show decode with the tokens we actually use (raw_text_tokens)
+                decoded_from_raw_tokens = self.text_tokenizer.decode(raw_text_tokens.tolist())
+                logger.info(f"  Decoded from raw tokens: '{decoded_from_raw_tokens}'")
+                
+            except Exception as e:
+                logger.warning(f"  Error testing encode/decode: {e}")
+            
             # Show actual decoded tokens in the requested format
             decoded_raw_tokens = self.text_tokenizer.decode(raw_text_tokens[:50])  # Show first 50 tokens
             decoded_full_tokens = self.text_tokenizer.decode(text_tokens[:50])     # Show first 50 tokens
