@@ -197,6 +197,43 @@ class SpeechFineTuningDataset(Dataset):
             logger.info(f"Sample {idx} - Text: '{normalized_text[:100]}...'")
             logger.info(f"Sample {idx} - Raw text tokens: {raw_text_tokens.tolist()[:20]}... (len={len(raw_text_tokens)})")
             logger.info(f"Sample {idx} - Text tokens with BOS/EOS: {text_tokens.tolist()[:20]}... (len={len(text_tokens)})")
+            
+            # Show actual decoded tokens in the requested format
+            decoded_raw_tokens = self.text_tokenizer.decode(raw_text_tokens[:50])  # Show first 50 tokens
+            decoded_full_tokens = self.text_tokenizer.decode(text_tokens[:50])     # Show first 50 tokens
+            
+            logger.info(f"Sample {idx} - Raw Text: {normalized_text}")
+            logger.info(f"Sample {idx} - Raw Tokens: {decoded_raw_tokens}")
+            logger.info(f"Sample {idx} - Full Text: {normalized_text}")  
+            logger.info(f"Sample {idx} - Full Tokens (with BOS/EOS): {decoded_full_tokens}")
+            logger.info(f"Sample {idx} - Token IDs: {raw_text_tokens.tolist()[:20]}...")
+            
+            # Show individual tokens like the user requested
+            try:
+                individual_tokens = []
+                for token_id in raw_text_tokens[:20].tolist():  # Show first 20 tokens
+                    token_text = self.text_tokenizer.decode([token_id])
+                    if token_text.strip():  # Only add non-empty tokens
+                        individual_tokens.append(repr(token_text))
+                logger.info(f"Sample {idx} - Individual Tokens: {individual_tokens}")
+            except Exception as e:
+                logger.warning(f"Error decoding individual tokens: {e}")
+                
+            # Show in the format requested by user: Text + Tokens list
+            try:
+                individual_tokens_clean = []
+                for token_id in raw_text_tokens[:30].tolist():  # Show first 30 tokens
+                    token_text = self.text_tokenizer.decode([token_id])
+                    # Clean up the token text
+                    token_text = token_text.replace('[SPACE]', ' ')  # Handle space tokens
+                    if token_text:  # Only add non-empty tokens
+                        individual_tokens_clean.append(token_text)
+                
+                if individual_tokens_clean:
+                    logger.info(f"Sample {idx} - {normalized_text}")
+                    logger.info(f"Sample {idx} - Tokens: {individual_tokens_clean}")
+            except Exception as e:
+                logger.warning(f"Error creating clean token display: {e}")
 
         try:
             raw_speech_tokens_batch, speech_token_lengths_batch = self.speech_tokenizer.forward([wav_16k])
@@ -266,6 +303,7 @@ class SpeechDataCollator:
     t3_config: T3Config  # Chatterbox T3Config
     text_pad_token_id: int
     speech_pad_token_id: int
+    tokenizer: Optional[Any] = None  # Add tokenizer for decoding
 
     def __call__(self, features: List[Optional[Dict[str, Any]]]) -> Dict[str, Any]:
         valid_features = [f for f in features if f is not None]
@@ -354,6 +392,52 @@ class SpeechDataCollator:
             logger.info(f"Text labels (first sample): {labels_text[0][:20].tolist()}...")
             logger.info(f"Speech labels (first sample): {labels_speech[0][:20].tolist()}...")
             logger.info(f"Conditioning prompt tokens (first sample): {t3_cond_prompt_speech_tokens[0][:20].tolist()}...")
+            
+            # Show decoded text tokens for first sample in batch
+            try:
+                first_sample_text_tokens = padded_text_tokens[0][:20]  # First 20 tokens
+                # Filter out padding tokens
+                non_pad_tokens = [t for t in first_sample_text_tokens.tolist() if t != self.text_pad_token_id]
+                if non_pad_tokens:
+                    # For debugging, let's try to find a tokenizer reference (will be passed later)
+                    logger.info(f"Non-padded text token IDs (first sample): {non_pad_tokens}")
+            except Exception as e:
+                logger.warning(f"Error processing batch tokens: {e}")
+                
+            # Decode text tokens if tokenizer is available
+            if self.tokenizer is not None:
+                try:
+                    first_sample_text_tokens = padded_text_tokens[0][:20]  # First 20 tokens
+                    # Filter out padding and special tokens
+                    non_pad_tokens = [t for t in first_sample_text_tokens.tolist() 
+                                    if t != self.text_pad_token_id and t != self.t3_config.start_text_token 
+                                    and t != self.t3_config.stop_text_token]
+                    
+                    if non_pad_tokens:
+                        # Decode full text
+                        decoded_text = self.tokenizer.decode(non_pad_tokens)
+                        logger.info(f"Batch - Decoded text (first sample): {decoded_text}")
+                        
+                        # Decode individual tokens
+                        individual_tokens = []
+                        for token_id in non_pad_tokens[:15]:  # Show first 15 tokens
+                            token_text = self.tokenizer.decode([token_id])
+                            if token_text.strip():  # Only add non-empty tokens
+                                individual_tokens.append(repr(token_text))
+                        logger.info(f"Batch - Individual tokens (first sample): {individual_tokens}")
+                        
+                        # Clean format like user requested
+                        clean_tokens = []
+                        for token_id in non_pad_tokens[:15]:  # Show first 15 tokens
+                            token_text = self.tokenizer.decode([token_id])
+                            token_text = token_text.replace('[SPACE]', ' ')  # Handle space tokens
+                            if token_text:  # Only add non-empty tokens
+                                clean_tokens.append(token_text)
+                        
+                        if clean_tokens:
+                            logger.info(f"Batch - Clean tokens (first sample): {clean_tokens}")
+                except Exception as e:
+                    logger.warning(f"Error decoding batch tokens: {e}")
 
         return {
             "text_tokens": padded_text_tokens, 
@@ -641,7 +725,8 @@ def main():
 
     data_collator = SpeechDataCollator(chatterbox_t3_config_instance, 
                                        chatterbox_t3_config_instance.stop_text_token,
-                                       chatterbox_t3_config_instance.stop_speech_token)
+                                       chatterbox_t3_config_instance.stop_speech_token,
+                                       tokenizer=chatterbox_model.tokenizer)
 
     logger.info(f"📊 Data collator configured with:")
     logger.info(f"  - Text pad token ID: {chatterbox_t3_config_instance.stop_text_token}")
