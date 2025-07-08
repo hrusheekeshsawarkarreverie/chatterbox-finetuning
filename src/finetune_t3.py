@@ -328,7 +328,6 @@ class SpeechDataCollator:
     t3_config: T3Config  # Chatterbox T3Config
     text_pad_token_id: int
     speech_pad_token_id: int
-    tokenizer: Optional[Any] = None  # Add tokenizer for decoding
 
     def __call__(self, features: List[Optional[Dict[str, Any]]]) -> Dict[str, Any]:
         valid_features = [f for f in features if f is not None]
@@ -429,40 +428,7 @@ class SpeechDataCollator:
             except Exception as e:
                 logger.warning(f"Error processing batch tokens: {e}")
                 
-            # Decode text tokens if tokenizer is available
-            if self.tokenizer is not None:
-                try:
-                    first_sample_text_tokens = padded_text_tokens[0][:20]  # First 20 tokens
-                    # Filter out padding and special tokens
-                    non_pad_tokens = [t for t in first_sample_text_tokens.tolist() 
-                                    if t != self.text_pad_token_id and t != self.t3_config.start_text_token 
-                                    and t != self.t3_config.stop_text_token]
-                    
-                    if non_pad_tokens:
-                        # Decode full text
-                        decoded_text = self.tokenizer.decode(non_pad_tokens)
-                        logger.info(f"Batch - Decoded text (first sample): {decoded_text}")
-                        
-                        # Decode individual tokens
-                        individual_tokens = []
-                        for token_id in non_pad_tokens[:15]:  # Show first 15 tokens
-                            token_text = self.tokenizer.decode([token_id])
-                            if token_text.strip():  # Only add non-empty tokens
-                                individual_tokens.append(repr(token_text))
-                        logger.info(f"Batch - Individual tokens (first sample): {individual_tokens}")
-                        
-                        # Clean format like user requested
-                        clean_tokens = []
-                        for token_id in non_pad_tokens[:15]:  # Show first 15 tokens
-                            token_text = self.tokenizer.decode([token_id])
-                            token_text = token_text.replace('[SPACE]', ' ')  # Handle space tokens
-                            if token_text:  # Only add non-empty tokens
-                                clean_tokens.append(token_text)
-                        
-                        if clean_tokens:
-                            logger.info(f"Batch - Clean tokens (first sample): {clean_tokens}")
-                except Exception as e:
-                    logger.warning(f"Error decoding batch tokens: {e}")
+            # Note: Tokenizer decoding moved to dataset level to avoid save_pretrained issues
 
         return {
             "text_tokens": padded_text_tokens, 
@@ -750,8 +716,7 @@ def main():
 
     data_collator = SpeechDataCollator(chatterbox_t3_config_instance, 
                                        chatterbox_t3_config_instance.stop_text_token,
-                                       chatterbox_t3_config_instance.stop_speech_token,
-                                       tokenizer=chatterbox_model.tokenizer)
+                                       chatterbox_t3_config_instance.stop_speech_token)
 
     logger.info(f"📊 Data collator configured with:")
     logger.info(f"  - Text pad token ID: {chatterbox_t3_config_instance.stop_text_token}")
