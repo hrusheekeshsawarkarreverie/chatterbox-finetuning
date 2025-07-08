@@ -32,7 +32,7 @@ python src/finetune_t3.py \
     --dataset_name SPRINGLab/IndicTTS-Hindi \
     --train_split_name train \
     --eval_split_size 0.01 \
-    --num_train_epochs 8 \
+    --num_train_epochs 35 \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 4 \
     --learning_rate 1e-3 \
@@ -53,9 +53,9 @@ python src/finetune_t3.py \
     --eval_strategy steps \
     --eval_steps 125 \
     --save_strategy steps \
-    --load_best_model_at_end True \
-    --seed 42 \
-    --logging_level DEBUG
+    # --load_best_model_at_end True \
+    # --seed 42 \
+    # --logging_level DEBUG
 
 echo ""
 echo "✅ Aggressive training completed!"
