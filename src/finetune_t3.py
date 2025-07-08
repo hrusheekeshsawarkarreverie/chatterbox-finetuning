@@ -192,6 +192,12 @@ class SpeechFineTuningDataset(Dataset):
             text_tokens = torch.cat([text_tokens, torch.tensor([self.chatterbox_t3_config.stop_text_token])])
         text_token_len = torch.tensor(len(text_tokens), dtype=torch.long)
 
+        # Log text tokens for first few samples
+        if idx < 5:
+            logger.info(f"Sample {idx} - Text: '{normalized_text[:100]}...'")
+            logger.info(f"Sample {idx} - Raw text tokens: {raw_text_tokens.tolist()[:20]}... (len={len(raw_text_tokens)})")
+            logger.info(f"Sample {idx} - Text tokens with BOS/EOS: {text_tokens.tolist()[:20]}... (len={len(text_tokens)})")
+
         try:
             raw_speech_tokens_batch, speech_token_lengths_batch = self.speech_tokenizer.forward([wav_16k])
             if raw_speech_tokens_batch is None or speech_token_lengths_batch is None:
@@ -208,6 +214,11 @@ class SpeechFineTuningDataset(Dataset):
             speech_tokens = speech_tokens[:self.data_args.max_speech_len-1]
             speech_tokens = torch.cat([speech_tokens, torch.tensor([self.chatterbox_t3_config.stop_speech_token])])
         speech_token_len = torch.tensor(len(speech_tokens), dtype=torch.long)
+
+        # Log speech tokens for first few samples  
+        if idx < 5:
+            logger.info(f"Sample {idx} - Raw speech tokens: {raw_speech_tokens.tolist()[:20]}... (len={len(raw_speech_tokens)})")
+            logger.info(f"Sample {idx} - Speech tokens with BOS/EOS: {speech_tokens.tolist()[:20]}... (len={len(speech_tokens)})")
 
         cond_audio_segment = wav_16k[:self.enc_cond_audio_len_samples]
         if len(cond_audio_segment) == 0 :
@@ -229,6 +240,10 @@ class SpeechFineTuningDataset(Dataset):
             target_len = self.chatterbox_t3_config.speech_cond_prompt_len
             if current_len > target_len: cond_prompt_speech_tokens = cond_prompt_speech_tokens[:target_len]
             else: cond_prompt_speech_tokens = F.pad(cond_prompt_speech_tokens, (0, target_len - current_len), value=0)
+        
+        # Log conditioning prompt tokens for first few samples
+        if idx < 5:
+            logger.info(f"Sample {idx} - Conditioning prompt speech tokens: {cond_prompt_speech_tokens.tolist()[:20]}... (len={len(cond_prompt_speech_tokens)})")
         
         emotion_adv_scalar=0.5
         emotion_adv_scalar_tensor = torch.tensor(emotion_adv_scalar, dtype=torch.float)
@@ -329,6 +344,17 @@ class SpeechDataCollator:
         labels_speech = shifted_speech.clone()          # (B, T_speech)
         labels_speech[mask_speech_total] = IGNORE_ID    # set prompt & pad to -100
 
+        # Log batch information periodically
+        if torch.rand(1).item() < 0.1:  # Log ~10% of batches to avoid spam
+            logger.info(f"Batch Info - Size: {batch_size}, Max text len: {max_text_len}, Max speech len: {max_speech_len}")
+            logger.info(f"Text token lengths: {text_token_lens.tolist()}")
+            logger.info(f"Speech token lengths: {speech_token_lens.tolist()}")
+            logger.info(f"Padded text tokens (first sample): {padded_text_tokens[0][:20].tolist()}...")
+            logger.info(f"Padded speech tokens (first sample): {padded_speech_tokens[0][:20].tolist()}...")
+            logger.info(f"Text labels (first sample): {labels_text[0][:20].tolist()}...")
+            logger.info(f"Speech labels (first sample): {labels_speech[0][:20].tolist()}...")
+            logger.info(f"Conditioning prompt tokens (first sample): {t3_cond_prompt_speech_tokens[0][:20].tolist()}...")
+
         return {
             "text_tokens": padded_text_tokens, 
             "text_token_lens": text_token_lens,
@@ -376,6 +402,21 @@ class T3ForFineTuning(torch.nn.Module):
                 labels_text = None,
                 labels_speech=None):
 
+        # Log input information periodically 
+        if torch.rand(1).item() < 0.05:  # Log ~5% of forward passes to avoid spam
+            logger.info(f"Model Forward - Text tokens shape: {text_tokens.shape}, Speech tokens shape: {speech_tokens.shape}")
+            logger.info(f"Model Forward - Text token lengths: {text_token_lens.tolist()}")
+            logger.info(f"Model Forward - Speech token lengths: {speech_token_lens.tolist()}")
+            logger.info(f"Model Forward - Text tokens (first sample): {text_tokens[0][:20].tolist()}...")
+            logger.info(f"Model Forward - Speech tokens (first sample): {speech_tokens[0][:20].tolist()}...")
+            logger.info(f"Model Forward - Speaker embedding shape: {t3_cond_speaker_emb.shape}")
+            logger.info(f"Model Forward - Prompt speech tokens shape: {t3_cond_prompt_speech_tokens.shape}")
+            logger.info(f"Model Forward - Emotion adv shape: {t3_cond_emotion_adv.shape}")
+            if labels_text is not None:
+                logger.info(f"Model Forward - Text labels (first sample): {labels_text[0][:20].tolist()}...")
+            if labels_speech is not None:
+                logger.info(f"Model Forward - Speech labels (first sample): {labels_speech[0][:20].tolist()}...")
+
         current_t3_cond = T3Cond(
                                 speaker_emb=t3_cond_speaker_emb,
                                 cond_prompt_speech_tokens=t3_cond_prompt_speech_tokens,
@@ -394,6 +435,10 @@ class T3ForFineTuning(torch.nn.Module):
                                 )
         
         total_loss = loss_text + loss_speech
+
+        # Log loss information periodically
+        if torch.rand(1).item() < 0.05:  # Log ~5% of forward passes
+            logger.info(f"Model Forward - Text loss: {loss_text.item():.4f}, Speech loss: {loss_speech.item():.4f}, Total loss: {total_loss.item():.4f}")
 
         # Return loss and additional outputs in a dict format for proper logging
         return {
@@ -458,6 +503,17 @@ def main():
     t3_model = chatterbox_model.t3
     chatterbox_t3_config_instance = t3_model.hp
 
+    logger.info(f"🔧 T3 Model Configuration:")
+    logger.info(f"  - Text vocab size: {chatterbox_t3_config_instance.text_tokens_dict_size}")
+    logger.info(f"  - Speech vocab size: {chatterbox_t3_config_instance.speech_tokens_dict_size}")
+    logger.info(f"  - Max text tokens: {chatterbox_t3_config_instance.max_text_tokens}")
+    logger.info(f"  - Max speech tokens: {chatterbox_t3_config_instance.max_speech_tokens}")
+    logger.info(f"  - Start text token: {chatterbox_t3_config_instance.start_text_token}")
+    logger.info(f"  - Stop text token: {chatterbox_t3_config_instance.stop_text_token}")
+    logger.info(f"  - Start speech token: {chatterbox_t3_config_instance.start_speech_token}")
+    logger.info(f"  - Stop speech token: {chatterbox_t3_config_instance.stop_speech_token}")
+    logger.info(f"  - Speech conditioning prompt length: {chatterbox_t3_config_instance.speech_cond_prompt_len}")
+
     if model_args.freeze_voice_encoder:
         for param in chatterbox_model.ve.parameters(): param.requires_grad = False
         logger.info("Voice Encoder frozen.")
@@ -477,10 +533,14 @@ def main():
             # We'll mask gradients in a training hook instead of setting requires_grad
             def mask_old_token_gradients(module, grad_input, grad_output):
                 if hasattr(module, 'weight') and module.weight.grad is not None:
-                    logger.debug(f"Masking gradients for {module.__class__.__name__}: "
-                               f"English grad max before: {module.weight.grad[:freeze_vocab_size].abs().max():.8f}")
+                    # Log gradient masking occasionally
+                    if torch.rand(1).item() < 0.01:  # Log ~1% of times to avoid spam
+                        logger.info(f"Gradient Masking - {module.__class__.__name__}: "
+                                   f"English grad max before: {module.weight.grad[:freeze_vocab_size].abs().max():.8f}")
                     module.weight.grad[:freeze_vocab_size] = 0
-                    logger.debug(f"English grad max after: {module.weight.grad[:freeze_vocab_size].abs().max():.8f}")
+                    if torch.rand(1).item() < 0.01:  # Log ~1% of times to avoid spam
+                        logger.info(f"Gradient Masking - {module.__class__.__name__}: "
+                                   f"English grad max after: {module.weight.grad[:freeze_vocab_size].abs().max():.8f}")
             
             # Register hooks on the wrapped model's components
             hf_trainable_model.t3.text_emb.register_backward_hook(mask_old_token_gradients)
@@ -565,6 +625,7 @@ def main():
                                             is_hf_format_train
                                             )
 
+    logger.info(f"📊 Training dataset loaded with {len(train_dataset)} samples")
 
     eval_dataset = None
     if eval_hf_dataset and training_args.do_eval:
@@ -574,10 +635,18 @@ def main():
                                                 eval_hf_dataset,
                                                 is_hf_format_eval
                                                 )
+        logger.info(f"📊 Evaluation dataset loaded with {len(eval_dataset)} samples")
+    else:
+        logger.info("📊 No evaluation dataset configured")
 
     data_collator = SpeechDataCollator(chatterbox_t3_config_instance, 
                                        chatterbox_t3_config_instance.stop_text_token,
                                        chatterbox_t3_config_instance.stop_speech_token)
+
+    logger.info(f"📊 Data collator configured with:")
+    logger.info(f"  - Text pad token ID: {chatterbox_t3_config_instance.stop_text_token}")
+    logger.info(f"  - Speech pad token ID: {chatterbox_t3_config_instance.stop_speech_token}")
+    logger.info(f"  - Speech conditioning prompt length: {chatterbox_t3_config_instance.speech_cond_prompt_len}")
 
     
     callbacks = []
