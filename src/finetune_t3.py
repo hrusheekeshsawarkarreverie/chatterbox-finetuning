@@ -598,7 +598,7 @@ def main():
     for param in t3_model.parameters(): param.requires_grad = True
     
     # Create model wrapper first
-    # hf_trainable_model = T3ForFineTuning(t3_model, chatterbox_t3_config_instance)
+    hf_trainable_model = T3ForFineTuning(t3_model, chatterbox_t3_config_instance)
     
     # Freeze original text embeddings if specified - REGISTER ON WRAPPED MODEL
     # if model_args.freeze_text_embeddings is not None:
