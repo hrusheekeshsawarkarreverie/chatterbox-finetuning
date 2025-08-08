@@ -93,8 +93,9 @@ class AudioGenerationCallback(TrainerCallback):
         
         try:
             # Temporarily set model to eval mode for generation
-            original_training_mode = self.chatterbox_model.training
-            self.chatterbox_model.eval()
+            original_training_mode = getattr(self.chatterbox_model, 'training', None)
+            if hasattr(self.chatterbox_model, 'eval'):
+                self.chatterbox_model.eval()
             
             for lang_type, sentences in self.test_sentences.items():
                 lang_dir = self.audio_dir / lang_type
@@ -117,7 +118,7 @@ class AudioGenerationCallback(TrainerCallback):
                         logger.warning(f"  ❌ Failed to generate {lang_type} sample {i+1}: {e}")
                         
             # Restore original training mode
-            if original_training_mode:
+            if original_training_mode and hasattr(self.chatterbox_model, 'train'):
                 self.chatterbox_model.train()
                 
             logger.info(f"🎵 Audio monitoring complete for {prefix}")
@@ -131,28 +132,35 @@ class CustomTrainingArguments(HfTrainingArguments):
     early_stopping_patience: Optional[int] = field(
         default=None, metadata={"help": "Enable early stopping with specified patience. Default: None (disabled)."}
     )
-    
+    finalize_checkpoint: Optional[bool] = field(
+        default=False,
+        metadata={"help": "If True, finalizes checkpoint into a full model without further training"},
+    )
     def __post_init__(self):
         # Import the enum for proper comparison
         from transformers.trainer_utils import IntervalStrategy
         
-        # Set strategies BEFORE calling parent __post_init__
+        # First run parent initialization so string strategies are converted to enums
+        super().__post_init__()
+        
         # Force evaluation strategy if eval_steps is provided or early stopping is enabled
-        if (self.eval_steps is not None and self.eval_steps > 0) or self.early_stopping_patience is not None:
+        if (self.eval_steps is not None and self.eval_steps > 0) or (self.early_stopping_patience is not None and self.early_stopping_patience > 0):
             self.evaluation_strategy = IntervalStrategy.STEPS
             # Also set eval_strategy for compatibility with different transformers versions
             self.eval_strategy = IntervalStrategy.STEPS
-            
-        # Force save strategy if save_steps is provided  
-        if self.save_steps is not None and self.save_steps > 0:
-            self.save_strategy = IntervalStrategy.STEPS
-                
+        
+        # Respect explicit save_strategy=epoch (do not let default save_steps flip it back to steps)
+        if self.save_strategy == IntervalStrategy.EPOCH:
+            # Disable step-based checkpoints entirely
+            self.save_steps = None
+        else:
+            # If user configured step-based saving explicitly, ensure strategy matches
+            if self.save_steps is not None and self.save_steps > 0:
+                self.save_strategy = IntervalStrategy.STEPS
+        
         # Enable load_best_model_at_end if early stopping is used
         if self.early_stopping_patience is not None and self.early_stopping_patience > 0:
             self.load_best_model_at_end = True
-            
-        # Call parent __post_init__ AFTER setting our strategies
-        super().__post_init__()
 
 # --- Argument Classes (ModelArguments, DataArguments) ---
 @dataclass
@@ -214,40 +222,101 @@ def load_cartesia_dataset(data_args: DataArguments, training_args) -> tuple[List
     # Read CSV file
     try:
         df = pd.read_csv(data_args.csv_file_path)
-        logger.info(f"Loaded CSV with {len(df)} rows")
-        logger.info(f"CSV columns: {list(df.columns)}")
+        logger.info(f"📊 INITIAL DATASET STATS")
+        logger.info(f"  ✅ Loaded CSV with {len(df)} rows")
+        logger.info(f"  📋 CSV columns: {list(df.columns)}")
+        
+        # Analyze status column if it exists
+        if 'status' in df.columns:
+            status_counts = df['status'].value_counts()
+            logger.info(f"  📈 Status distribution: {status_counts.to_dict()}")
+        
+        # Clean up missing text values
+        initial_count = len(df)
+        logger.info(f"\n🔍 TEXT FILTERING ANALYSIS:")
+        
+        # Check for completely missing values
+        text_na_count = df[data_args.text_column_name].isna().sum()
+        logger.info(f"  ❌ Rows with NaN text: {text_na_count}")
+        
+        # Remove NaN values
+        df_after_na = df.dropna(subset=[data_args.text_column_name])
+        
+        # Check for empty strings
+        empty_text_count = (df_after_na[data_args.text_column_name].astype(str).str.strip() == '').sum()
+        logger.info(f"  ❌ Rows with empty text (after removing NaN): {empty_text_count}")
+        
+        # Apply both filters
+        df = df.dropna(subset=[data_args.text_column_name])
+        df = df[df[data_args.text_column_name].astype(str).str.strip() != '']
+        cleaned_count = len(df)
+        
+        text_removed = initial_count - cleaned_count
+        logger.info(f"  📊 Text filtering summary:")
+        logger.info(f"    - Started with: {initial_count} rows")
+        logger.info(f"    - Removed total: {text_removed} rows (NaN + empty)")
+        logger.info(f"    - Remaining: {cleaned_count} rows")
+            
     except Exception as e:
         raise ValueError(f"Error reading CSV file {data_args.csv_file_path}: {e}")
     
     # Filter successful entries only
+    logger.info(f"\n🎯 STATUS FILTERING ANALYSIS:")
     if 'status' in df.columns:
+        before_status_filter = len(df)
         df = df[df['status'] == 'success']
-        logger.info(f"Filtered to {len(df)} successful entries")
+        after_status_filter = len(df)
+        status_removed = before_status_filter - after_status_filter
+        
+        logger.info(f"  📊 Status filtering summary:")
+        logger.info(f"    - Before status filter: {before_status_filter} rows")
+        logger.info(f"    - After status filter: {after_status_filter} rows")
+        logger.info(f"    - Removed (non-success): {status_removed} rows")
+    else:
+        logger.info(f"  ⚠️  No 'status' column found - no status filtering applied")
     
     # Filter for Voice_2 only
-    if 'voice_name' in df.columns:
-        df = df[df['voice_name'] == 'Voice_2']
-        logger.info(f"Filtered to {len(df)} Voice_2 entries")
-    else:
-        logger.warning("voice_name column not found in CSV - proceeding without voice filtering")
+    # if 'voice_name' in df.columns:
+    #     df = df[df['voice_name'] == 'Voice_2']
+    #     logger.info(f"Filtered to {len(df)} Voice_2 entries")
+    # else:
+    #     logger.warning("voice_name column not found in CSV - proceeding without voice filtering")
     
-    # Create dataset entries
+    # Create dataset entries with detailed tracking
+    logger.info(f"\n🔍 AUDIO FILE VALIDATION:")
     dataset_entries = []
     audio_dir = Path(data_args.audio_dir_path)
     
+    missing_audio_count = 0
+    invalid_text_during_processing = 0
+    max_samples_hit = False
+    
+    logger.info(f"  📁 Audio directory: {audio_dir}")
+    logger.info(f"  📊 Processing {len(df)} rows after CSV filtering...")
+    
     for idx, row in df.iterrows():
         if data_args.max_samples and len(dataset_entries) >= data_args.max_samples:
+            max_samples_hit = True
             break
             
         audio_filename = row[data_args.audio_column_name]
         text = row[data_args.text_column_name]
+        
+        # Validate text is a string and not empty/NaN (additional check)
+        if pd.isna(text) or not isinstance(text, str) or not text.strip():
+            if invalid_text_during_processing < 10:  # Log first 10 examples
+                logger.warning(f"  ❌ Row {idx}: Invalid text '{text}' (type: {type(text)}). Skipping.")
+            invalid_text_during_processing += 1
+            continue
         
         # Construct full audio path
         audio_path = audio_dir / audio_filename
         
         # Check if audio file exists
         if not audio_path.exists():
-            logger.warning(f"Audio file not found: {audio_path}. Skipping.")
+            if missing_audio_count < 10:  # Log first 10 examples
+                logger.warning(f"  ❌ Audio file not found: {audio_path}. Skipping.")
+            missing_audio_count += 1
             continue
             
         dataset_entries.append({
@@ -256,7 +325,25 @@ def load_cartesia_dataset(data_args: DataArguments, training_args) -> tuple[List
             "unique_id": row.get('unique_id', f'sample_{idx}')
         })
     
-    logger.info(f"Created dataset with {len(dataset_entries)} valid entries")
+    # Summary of final filtering
+    logger.info(f"\n📊 FINAL DATASET CREATION SUMMARY:")
+    logger.info(f"  ✅ Successfully created: {len(dataset_entries)} valid entries")
+    logger.info(f"  ❌ Missing audio files: {missing_audio_count} rows")
+    logger.info(f"  ❌ Invalid text during processing: {invalid_text_during_processing} rows")
+    
+    if max_samples_hit:
+        logger.info(f"  ⏹️  Stopped at max_samples limit: {data_args.max_samples}")
+    
+    # Calculate total loss
+    total_original = initial_count
+    total_final = len(dataset_entries)
+    total_lost = total_original - total_final
+    
+    logger.info(f"\n🎯 COMPLETE FILTERING PIPELINE SUMMARY:")
+    logger.info(f"  📥 Original CSV rows: {total_original}")
+    logger.info(f"  📤 Final valid entries: {total_final}")
+    logger.info(f"  📉 Total rows lost: {total_lost} ({total_lost/total_original*100:.1f}%)")
+    logger.info(f"  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     
     # Split into train and eval if requested
     eval_dataset = None
@@ -306,6 +393,11 @@ class SpeechFineTuningDataset(Dataset):
         item = self.dataset_entries[idx]
         audio_path = item["audio"]
         text = item["text"]
+        
+        # Validate text is a string and not empty/NaN
+        if pd.isna(text) or not isinstance(text, str) or not text.strip():
+            logger.warning(f"Invalid text for item {idx}: {text} (type: {type(text)}). Skipping.")
+            return None, None
         
         try:
             wav_16k, _ = librosa.load(audio_path, sr=self.s3_sr, mono=True)
@@ -832,13 +924,13 @@ def main():
         callbacks.append(EarlyStoppingCallback(early_stopping_patience=training_args.early_stopping_patience))
     
     # Add audio generation callback for monitoring training progress
-    audio_callback = AudioGenerationCallback(
-        chatterbox_model=chatterbox_model,
-        output_dir=training_args.output_dir,
-        generation_interval=250  # Generate audio every 250 steps
-    )
-    callbacks.append(audio_callback)
-    logger.info("🎵 Added audio generation callback - will generate test samples every 250 steps and at epoch end")
+    # audio_callback = AudioGenerationCallback(
+    #     chatterbox_model=chatterbox_model,
+    #     output_dir=training_args.output_dir,
+    #     generation_interval=250  # Generate audio every 250 steps
+    # )
+    # callbacks.append(audio_callback)
+    # logger.info("🎵 Added audio generation callback - will generate test samples every 250 steps and at epoch end")
 
     trainer_instance = Trainer(
         model=hf_trainable_model,
@@ -887,6 +979,37 @@ def main():
         metrics = trainer_instance.evaluate()
         trainer_instance.log_metrics("eval", metrics)
         trainer_instance.save_metrics("eval", metrics)
+
+    if training_args.finalize_checkpoint:
+        logger.info("Finalizing model from checkpoint without further training...")
+
+        # Load checkpoint
+        trainer_instance.model = trainer_instance.model.from_pretrained(training_args.resume_from_checkpoint)
+
+        # Save entire model (as if it completed training)
+        trainer_instance.save_model()
+
+        logger.info("Saving finetuned T3 model weights for ChatterboxTTS...")
+        t3_to_save = trainer_instance.model.t3 if hasattr(trainer_instance.model, 't3') else trainer_instance.model.module.t3
+        finetuned_t3_state_dict = t3_to_save.state_dict()
+
+        output_t3_safetensor_path = Path(training_args.output_dir) / "t3_cfg.safetensors"
+        from safetensors.torch import save_file
+        save_file(finetuned_t3_state_dict, output_t3_safetensor_path)
+        logger.info(f"Finetuned T3 model weights saved to {output_t3_safetensor_path}")
+
+        # Copy remaining assets
+        if original_model_dir_for_copy:
+            import shutil
+            for f_name in ["ve.safetensors", "s3gen.safetensors", "tokenizer.json"]:
+                src_path = original_model_dir_for_copy / f_name
+                if src_path.exists(): 
+                    shutil.copy2(src_path, Path(training_args.output_dir) / f_name)
+            if (original_model_dir_for_copy / "conds.pt").exists():
+                shutil.copy2(original_model_dir_for_copy / "conds.pt", Path(training_args.output_dir) / "conds.pt")
+
+        logger.info("Final model structure completed.")
+
 
     logger.info("Finetuning script finished.")
 

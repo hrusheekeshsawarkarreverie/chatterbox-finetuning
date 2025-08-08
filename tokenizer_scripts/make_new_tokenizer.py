@@ -240,11 +240,11 @@ def analyze_tokenizer(tokenizer_path: str):
 
 def main():
     import os
-    text_file = "data/hindi_sentences_500.txt"
-    vocab_size = 500
-    output_path = "hi_tokenizer_500.json"
+    text_file = "data/sentences_hindi_only_97000.txt"
+    vocab_size = 350
+    output_path = "hi_tokenizer_97000_350.json"
     # existing_tokenizer_path = "chatterbox-project/chatterbox_weights/tokenizer.json"
-    existing_tokenizer_path = "../src/checkpoints/chatterbox_finetuned_t13n/pretrained_model_download/tokenizer.json"
+    existing_tokenizer_path = "og_tokenizer.json"
     
     if not os.path.exists(text_file):
         print(f"Error: Text file not found: {text_file}")
